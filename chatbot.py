@@ -29,11 +29,18 @@ class FAQChatbot:
         with open(faq_path, encoding="utf-8") as f:
             self.faqs = json.load(f)
 
-        self.questions = [item["question"] for item in self.faqs]
-        self.processed = [preprocess(q) for q in self.questions]
+        # One row per phrasing: the main question plus every variant.
+        # owner[i] remembers which FAQ row i belongs to.
+        self.phrasings = []
+        self.owner = []
+        for idx, item in enumerate(self.faqs):
+            for text in [item["question"]] + item.get("variants", []):
+                self.phrasings.append(text)
+                self.owner.append(idx)
 
+        processed = [preprocess(t) for t in self.phrasings]
         self.vectorizer = TfidfVectorizer()
-        self.matrix = self.vectorizer.fit_transform(self.processed)
+        self.matrix = self.vectorizer.fit_transform(processed)
 
     def get_answer(self, user_question):
         cleaned = preprocess(user_question)
@@ -42,8 +49,9 @@ class FAQChatbot:
 
         user_vector = self.vectorizer.transform([cleaned])
         scores = cosine_similarity(user_vector, self.matrix)[0]
-        best = int(scores.argmax())
-        best_score = float(scores[best])
+        best_row = int(scores.argmax())
+        best_score = float(scores[best_row])
+        faq = self.faqs[self.owner[best_row]]
 
         if best_score < THRESHOLD:
             return (
@@ -52,7 +60,7 @@ class FAQChatbot:
                 best_score,
                 None,
             )
-        return self.faqs[best]["answer"], best_score, self.questions[best]
+        return faq["answer"], best_score, faq["question"]
 
 
 if __name__ == "__main__":
