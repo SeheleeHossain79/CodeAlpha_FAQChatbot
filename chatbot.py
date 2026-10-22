@@ -2,20 +2,58 @@ import json
 import re
 
 import nltk
+
+for package in ("punkt", "punkt_tab", "stopwords"):
+    nltk.download(package, quiet=True)
+
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-for package in ("punkt", "punkt_tab", "stopwords"):
-    nltk.download(package, quiet=True)
-
 STOP_WORDS = set(stopwords.words("english"))
 STEMMER = PorterStemmer()
 
-# If the best match scores below this, the bot admits it doesn't know.
+# If the best match scores below this, the bot does not trust it.
 THRESHOLD = 0.25
+
+# ---------- Topics (used by the topic browser and "related questions") ----------
+HIDDEN = {"hello", "thank you"}   # small-talk FAQs, not shown in the browser
+CATEGORY_ORDER = [
+    "Orders", "Delivery", "Payments", "Returns & Refunds",
+    "Offers", "Products", "Account & Privacy", "Support",
+]
+# First rule that matches wins. You can also add  "category": "Delivery"  to any
+# entry in faqs.json to set its topic by hand.
+CATEGORY_RULES = [
+    ("Returns & Refunds", ["return", "refund", "exchange", "damaged", "wrong item",
+                           "missing", "warranty", "defective"]),
+    ("Payments", ["pay", "card", "cash", "installment", "invoice", "receipt",
+                  "vat", "tax", "charged", "deducted", "price", "pending"]),
+    ("Delivery", ["deliver", "shipping", "ship", "track", "courier", "express",
+                  "international", "bangladesh", "address", "receive"]),
+    ("Offers", ["discount", "coupon", "promo", "sale", "arrival", "newsletter",
+                "voucher", "wholesale", "bulk"]),
+    ("Account & Privacy", ["account", "password", "sign up", "register",
+                           "personal information", "safe"]),
+    ("Support", ["contact", "support", "feedback", "review", "complaint"]),
+    ("Orders", ["order", "cancel", "checkout", "purchase", "buy"]),
+    ("Products", ["product", "sell", "stock", "quality", "specification",
+                  "original", "gift", "item"]),
+]
+
+
+def get_category(faq):
+    if "category" in faq:
+        return faq["category"]
+    q = faq["question"].lower().strip(" ?!.")
+    if q in HIDDEN:
+        return None
+    for category, words in CATEGORY_RULES:
+        if any(w in q for w in words):
+            return category
+    return "General"
 
 
 def preprocess(text):
@@ -45,6 +83,9 @@ class FAQChatbot:
         self.vectorizer = TfidfVectorizer()
         self.matrix = self.vectorizer.fit_transform(processed)
 
+        self.answer_of = {f["question"]: f["answer"] for f in self.faqs}
+        self.category_of = {f["question"]: get_category(f) for f in self.faqs}
+
     def get_answer(self, user_question):
         cleaned = preprocess(user_question)
         if not cleaned.strip():
@@ -59,11 +100,59 @@ class FAQChatbot:
         if best_score < THRESHOLD:
             return (
                 "Sorry, I don't have an answer for that. "
-                "Try rephrasing, or contact support@example.com.",
+                "Try rephrasing, or contact support@littleaura.com.",
                 best_score,
                 None,
             )
         return faq["answer"], best_score, faq["question"]
+
+    def suggest(self, user_question, n=3):
+        """The n closest FAQs as (question, score), best first."""
+        cleaned = preprocess(user_question)
+        if not cleaned.strip():
+            return []
+        user_vector = self.vectorizer.transform([cleaned])
+        scores = cosine_similarity(user_vector, self.matrix)[0]
+
+        best = {}  # FAQ index -> best score among its phrasings
+        for row, score in enumerate(scores):
+            idx = self.owner[row]
+            if score > best.get(idx, 0):
+                best[idx] = float(score)
+
+        ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)
+        results = []
+        for idx, score in ranked:
+            question = self.faqs[idx]["question"]
+            if score > 0 and self.category_of[question]:
+                results.append((question, score))
+            if len(results) == n:
+                break
+        return results
+
+    def related(self, question, n=3):
+        """Other questions from the same topic."""
+        category = self.category_of.get(question)
+        if not category:
+            return []
+        same = [q for q, c in self.category_of.items() if c == category]
+        if len(same) <= 1:
+            return []
+        i = same.index(question)
+        count = min(n, len(same) - 1)
+        return [same[(i + k) % len(same)] for k in range(1, count + 1)]
+
+    def topics(self):
+        """{topic name: [questions]} in a sensible order."""
+        groups = {}
+        for faq in self.faqs:
+            category = self.category_of[faq["question"]]
+            if category:
+                groups.setdefault(category, []).append(faq["question"])
+        ordered = {c: groups[c] for c in CATEGORY_ORDER if c in groups}
+        for category in groups:
+            ordered.setdefault(category, groups[category])
+        return ordered
 
 
 if __name__ == "__main__":

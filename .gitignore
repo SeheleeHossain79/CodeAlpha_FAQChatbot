@@ -1,3 +1,5 @@
 venv/
 chats.json
 .streamlit/secrets.toml
+unanswered.csv
+feedback.csv
