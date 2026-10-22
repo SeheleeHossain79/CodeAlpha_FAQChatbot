@@ -6,7 +6,23 @@ from pathlib import Path
 import streamlit as st
 from chatbot import FAQChatbot
 
+import os
+import re
+from llm import GeminiFallback, OUT_OF_TOPIC
+
 # ---------- Settings you can change ----------
+MAX_AI_CALLS = 10      # Gemini calls allowed per visitor session (protects your quota)
+MAX_QUESTION_CHARS = 300
+GEMINI_MODEL = "gemini-3-flash-preview"
+NO_ANSWER = (
+    "Sorry, I don't have an answer for that right now. "
+    "Please contact support@littleaura.com and we'll help you."
+)
+OFF_TOPIC = (
+    "Sorry, that's out of topic. I can only help with questions about "
+    "Little Aura: orders, delivery, payments, returns and our products."
+)
+
 BRAND = "Little Aura"                 # your store / company name
 TYPING_SECONDS = 0.8           # pause before the bot answers
 HISTORY_FILE = Path("chats.json")
@@ -139,6 +155,49 @@ def load_bot():
 
 bot = load_bot()
 
+def get_secret(name, default=None):
+    try:
+        return st.secrets[name]
+    except Exception:
+        return os.environ.get(name, default)
+
+
+@st.cache_resource
+def load_ai():
+    key = get_secret("GEMINI_API_KEY")
+    if not key:
+        return None
+    return GeminiFallback(key, bot.faqs, model=get_secret("GEMINI_MODEL", GEMINI_MODEL))
+
+
+ai = load_ai()
+st.session_state.setdefault("ai_calls", 0)
+
+
+def get_reply(prompt):
+    """Returns (answer, score, matched_faq, source)."""
+    if not re.search(r"[A-Za-z0-9]", prompt):
+        return "Please type a question.", 0.0, None, "none"
+
+    answer, score, matched = bot.get_answer(prompt)
+    if matched:
+        return answer, score, matched, "faq"
+
+    # No FAQ matched: ask Gemini (if available and within this visitor's limit)
+    if ai is None or st.session_state.ai_calls >= MAX_AI_CALLS:
+        return NO_ANSWER, score, None, "none"
+    try:
+        st.session_state.ai_calls += 1
+        reply = ai.ask(prompt[:MAX_QUESTION_CHARS])
+    except Exception:
+        return NO_ANSWER, score, None, "none"
+
+    if not reply:
+        return NO_ANSWER, score, None, "none"
+    if reply.upper().startswith(OUT_OF_TOPIC):
+        return OFF_TOPIC, score, None, "off"
+    return reply, score, None, "ai"
+
 if "chats" not in st.session_state:
     st.session_state.chats = load_chats()
     st.session_state.pending = None
@@ -193,12 +252,14 @@ st.title("How can we help?")
 st.caption(f"The {BRAND} assistant answers common questions instantly.")
 
 # ---------- Conversation ----------
+
 for msg in messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
+        if msg.get("source") == "ai":
+            st.caption("✨ AI-generated answer. Please confirm anything important with support.")
         if msg.get("matched") and st.session_state.get("show_debug"):
             st.caption(f"Matched: {msg['matched']} (similarity {msg['score']:.2f})")
-
 # ---------- Quick replies (only at the start of a chat) ----------
 if len(messages) == 1 and not st.session_state.pending:
     cols = st.columns(2)
@@ -223,10 +284,11 @@ if prompt:
     with st.chat_message("assistant"):
         with st.spinner("Typing..."):
             time.sleep(TYPING_SECONDS)
-            answer, score, matched = bot.get_answer(prompt)
+            answer, score, matched, source = get_reply(prompt)
 
-    messages.append(
-        {"role": "assistant", "content": answer, "matched": matched, "score": score}
+        messages.append(
+        {"role": "assistant", "content": answer, "matched": matched,
+         "score": score, "source": source}
     )
     save_chats()
     st.rerun()

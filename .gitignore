@@ -1,2 +1,3 @@
 venv/
 chats.json
+.streamlit/secrets.toml

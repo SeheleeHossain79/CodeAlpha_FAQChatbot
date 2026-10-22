@@ -47,3 +47,4 @@
 streamlit
 nltk
 scikit-learn
+google-genai
