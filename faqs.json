@@ -43,5 +43,18 @@
    "answer": "Yes. Subscribe to our newsletter for a 10% welcome coupon and for seasonal sale announcements."},
   {"question": "What if I receive a damaged or wrong item?",
    "variants": ["my product arrived broken", "I got the wrong product", "item is defective", "package was damaged"],
-   "answer": "We're sorry about that. Send a photo to support@example.com within 7 days and we will send a replacement or refund you."}
+   "answer": "We're sorry about that. Send a photo to support@example.com within 7 days and we will send a replacement or refund you."},
+
+  {"question": "How can I give feedback or leave a review?",
+   "variants": ["I loved the product", "I am happy with my purchase", "leave a review", "rate a product", "I want to share my opinion", "suggestion for your store", "I have a complaint"],
+   "answer": "Thank you! You can rate and review any product from 'My Orders' by clicking 'Write a review'. For other feedback or complaints, email support@example.com."},
+  {"question": "Do your products have a warranty?",
+   "variants": ["do you give any guarantee on products", "is there a guarantee", "how long is the warranty", "product warranty period"],
+   "answer": "Electronics come with a 1-year manufacturer warranty. Other items are covered by our 30-day return policy."},
+  {"question": "Hello",
+   "variants": ["hi", "hey", "good morning", "good evening", "hello there"],
+   "answer": "Hello! 👋 I'm the shop's FAQ assistant. Ask me about orders, delivery, returns, payments, and more."},
+  {"question": "Thank you",
+   "variants": ["thanks", "thanks a lot", "that helped", "great thanks", "thank you so much"],
+   "answer": "You're welcome! Let me know if you have any other questions."}
 ]
