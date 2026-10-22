@@ -3,24 +3,24 @@ import re
 
 import nltk
 from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
+from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-STOP_WORDS = set(stopwords.words("english")) - {"not", "no"}
-LEMMATIZER = WordNetLemmatizer()
+STOP_WORDS = set(stopwords.words("english"))
+STEMMER = PorterStemmer()
 
 # If the best match scores below this, the bot admits it doesn't know.
 THRESHOLD = 0.25
 
 
 def preprocess(text):
-    """Lowercase -> remove punctuation -> tokenize -> remove stop words -> lemmatize."""
+    """Lowercase -> remove punctuation -> tokenize -> remove stop words -> stem."""
     text = text.lower()
     text = re.sub(r"[^a-z0-9\s]", " ", text)
     tokens = word_tokenize(text)
-    tokens = [LEMMATIZER.lemmatize(t) for t in tokens if t not in STOP_WORDS]
+    tokens = [STEMMER.stem(t) for t in tokens if t not in STOP_WORDS]
     return " ".join(tokens)
 
 
