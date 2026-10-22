@@ -8,6 +8,9 @@ from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+for package in ("punkt", "punkt_tab", "stopwords"):
+    nltk.download(package, quiet=True)
+
 STOP_WORDS = set(stopwords.words("english"))
 STEMMER = PorterStemmer()
 

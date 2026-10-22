@@ -10,6 +10,7 @@ from chatbot import FAQChatbot
 BRAND = "Little Aura"                 # your store / company name
 TYPING_SECONDS = 0.8           # pause before the bot answers
 HISTORY_FILE = Path("chats.json")
+SAVE_HISTORY = False   # keep False when the app is public; True only on your own PC
 WELCOME = (
     "Hi there! 👋 Welcome to Little Aura. I'm happy to help. "
     "Ask me about orders, delivery, returns or payments, or pick a topic below."
@@ -95,13 +96,22 @@ st.markdown(
 
 # ---------- Saving and loading chat history ----------
 def load_chats():
+    if not SAVE_HISTORY:
+        return {}
     try:
         return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
+    # try:
+    #     return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+    # except Exception:
+    #     return {}
+
 
 def save_chats():
+    if not SAVE_HISTORY:
+        return
     # Only save chats that contain at least one customer message
     to_save = {
         cid: chat
