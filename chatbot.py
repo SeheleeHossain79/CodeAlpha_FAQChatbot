@@ -56,6 +56,23 @@ def get_category(faq):
     return "General"
 
 
+GREETING_RE = re.compile(
+    r"^\s*(?:(?:hello|hi|hey|hiya|howdy|salam|assalamu\s+alaikum|assalamualaikum"
+    r"|good\s+(?:morning|afternoon|evening|day))(?:\s+there)?\b[\s,.!:;-]*)+",
+    re.IGNORECASE,
+)
+THANKS_RE = re.compile(
+    r"[\s,.!;-]*\b(?:thanks|thank\s+you|thx)\b(?:\s+(?:a\s+lot|so\s+much))?[\s.!]*$",
+    re.IGNORECASE,
+)
+
+
+def strip_smalltalk(text):
+    """Remove a leading greeting and a trailing 'thanks' if a real question remains."""
+    cleaned = GREETING_RE.sub("", text, count=1)
+    cleaned = THANKS_RE.sub("", cleaned, count=1)
+    return cleaned if re.search(r"[A-Za-z0-9]", cleaned) else text
+
 def preprocess(text):
     """Lowercase -> remove punctuation -> tokenize -> remove stop words -> stem."""
     text = text.lower()
@@ -87,7 +104,7 @@ class FAQChatbot:
         self.category_of = {f["question"]: get_category(f) for f in self.faqs}
 
     def get_answer(self, user_question):
-        cleaned = preprocess(user_question)
+        cleaned = preprocess(strip_smalltalk(user_question))
         if not cleaned.strip():
             return "Please type a question.", 0.0, None
 
@@ -108,7 +125,7 @@ class FAQChatbot:
 
     def suggest(self, user_question, n=3):
         """The n closest FAQs as (question, score), best first."""
-        cleaned = preprocess(user_question)
+        cleaned = preprocess(strip_smalltalk(user_question))
         if not cleaned.strip():
             return []
         user_vector = self.vectorizer.transform([cleaned])
