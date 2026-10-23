@@ -27,6 +27,7 @@ UNANSWERED_FILE = Path("unanswered.csv")
 FEEDBACK_FILE = Path("feedback.csv")
 MAX_AI_CALLS = 10              # Gemini calls per visitor session
 MAX_QUESTION_CHARS = 300
+MAX_COMPOSE_CHARS = 700
 SUGGEST_MIN = 0.12             # below this, a match is too weak to suggest
 GEMINI_MODEL = "gemini-3-flash-preview"
 
@@ -265,9 +266,9 @@ st.session_state.setdefault("ai_calls", 0)
 st.session_state.setdefault("pending", None)
 
 
-def make_reply(answer, score, matched, source, suggestions=None, related=None):
+def make_reply(answer, score, matched, source, suggestions=None, related=None, parts=None):
     return {"answer": answer, "score": score, "matched": matched, "source": source,
-            "suggestions": suggestions or [], "related": related or []}
+            "suggestions": suggestions or [], "related": related or [], "parts": parts or []}
 
 
 def get_reply(prompt):
@@ -278,30 +279,64 @@ def get_reply(prompt):
     if prompt in bot.answer_of:
         return make_reply(bot.answer_of[prompt], 1.0, prompt, "faq", related=bot.related(prompt))
 
-    answer, score, matched = bot.get_answer(prompt)
-    if matched:
-        return make_reply(answer, score, matched, "faq", related=bot.related(matched))
+    info = bot.analyze(prompt)
+    greeting, rest, intents = info["greeting"], info["rest"], info["intents"]
 
-    close = bot.suggest(prompt, 3)
-    # Weak but close: offer choices instead of guessing (no API call needed)
-    if close and close[0][1] >= SUGGEST_MIN:
-        return make_reply("I'm not sure I understood. Did you mean one of these?",
-                          score, None, "suggest", suggestions=[q for q, _ in close])
+    def hi(text):  # put the greeting in front of replies we write ourselves
+        return f"{greeting}\n\n{text}" if greeting else text
 
-    # Nothing close: ask Gemini, if available and within this visitor's limit
-    fallback = make_reply(NO_ANSWER, score, None, "none", suggestions=[q for q, _ in close])
+    # Only a greeting: greet back and introduce the assistant
+    if info["greeting_only"]:
+        return make_reply(
+            f"{greeting} I'm the {BRAND} assistant. Ask me about orders, delivery, "
+            "returns, payments and more, or pick a topic below.",
+            1.0, None, "smalltalk")
+
+    # One clear question
+    if len(intents) == 1:
+        q, score = intents[0]
+        return make_reply(hi(bot.answer_of[q]), score, q, "faq",
+                          related=bot.related(q), parts=intents)
+
+    # Several questions in one message
+    if len(intents) >= 2:
+        first = intents[0][0]
+        facts = [(q, bot.answer_of[q]) for q, _ in intents]
+        reply = None
+        if ai is not None and st.session_state.ai_calls < MAX_AI_CALLS:
+            try:
+                st.session_state.ai_calls += 1
+                reply = ai.compose(prompt[:MAX_COMPOSE_CHARS], facts, greeting)
+            except Exception:
+                reply = None
+        if reply and not reply.upper().startswith(OUT_OF_TOPIC):
+            return make_reply(reply, intents[0][1], first, "compose",
+                              related=bot.related(first), parts=intents)
+        # No AI available: combine the FAQ answers ourselves
+        body = "\n\n".join(f"**{q}**\n{a}" for q, a in facts)
+        return make_reply(hi("Here's what I found for your questions:\n\n" + body),
+                          intents[0][1], first, "faq", related=bot.related(first), parts=intents)
+
+    # No FAQ matched: offer choices, or ask Gemini
+    close = bot.suggest(rest, 3)
+    best = close[0][1] if close else 0.0
+    if close and best >= SUGGEST_MIN:
+        return make_reply(hi("I'm not sure I understood. Did you mean one of these?"),
+                          best, None, "suggest", suggestions=[q for q, _ in close])
+
+    fallback = make_reply(hi(NO_ANSWER), best, None, "none", suggestions=[q for q, _ in close])
     if ai is None or st.session_state.ai_calls >= MAX_AI_CALLS:
         return fallback
     try:
         st.session_state.ai_calls += 1
-        reply = ai.ask(prompt[:MAX_QUESTION_CHARS])
+        reply = ai.ask(rest[:MAX_QUESTION_CHARS])
     except Exception:
         return fallback
     if not reply:
         return fallback
     if reply.upper().startswith(OUT_OF_TOPIC):
-        return make_reply(OFF_TOPIC, score, None, "off")
-    return make_reply(reply, score, None, "ai")
+        return make_reply(hi(OFF_TOPIC), best, None, "off")
+    return make_reply(hi(reply), best, None, "ai")
 
 
 # ---------- Saving and loading chat history ----------
@@ -407,11 +442,14 @@ def render_feedback(msg):
 for msg in messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
-        if msg.get("source") == "ai":
+        if msg.get("source") in ("ai", "compose"):
             st.caption("✨ AI-generated answer. Please confirm anything important with support.")
-        if msg.get("matched") and st.session_state.get("show_debug"):
+        if msg.get("parts") and st.session_state.get("show_debug"):
+            st.caption("Detected: " + " | ".join(f"{q} ({s:.2f})" for q, s in msg["parts"]))
+        elif msg.get("matched") and st.session_state.get("show_debug"):
             st.caption(f"Matched: {msg['matched']} (similarity {msg['score']:.2f})")
-        if msg["role"] == "assistant" and msg.get("id") and msg.get("source") != "empty":
+        if (msg["role"] == "assistant" and msg.get("id")
+                and msg.get("source") not in ("empty", "smalltalk")):
             render_feedback(msg)
 
 # ---------- Buttons under the latest answer ----------
@@ -421,7 +459,7 @@ if last["role"] == "assistant" and last.get("id"):
     options, label = [], ""
     if source == "suggest":
         options, label = last.get("suggestions", []), "Did you mean:"
-    elif source == "faq":
+    elif source in ("faq", "compose"):
         options, label = last.get("related", []), "You may also ask:"
     elif source == "none":
         options, label = last.get("suggestions", []), "Maybe one of these helps:"
@@ -481,6 +519,7 @@ if prompt:
         "source": reply["source"],
         "suggestions": reply["suggestions"],
         "related": reply["related"],
+        "parts": reply["parts"],
         "id": uuid.uuid4().hex[:8],
         "question": prompt,
     })

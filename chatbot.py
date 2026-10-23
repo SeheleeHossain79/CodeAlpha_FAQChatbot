@@ -73,6 +73,50 @@ def strip_smalltalk(text):
     cleaned = THANKS_RE.sub("", cleaned, count=1)
     return cleaned if re.search(r"[A-Za-z0-9]", cleaned) else text
 
+# A second (third...) question in the same message must match at least this well,
+# so a stray clause doesn't trigger an extra answer. Tune it if needed.
+SECOND_INTENT_MIN = 0.35
+
+SPLIT_RE = re.compile(
+    r"[.?!;\n]+"
+    r"|,\s*(?:and\s+also|but|so)\s+"
+    r"|\s+(?:and\s+also|but\s+also|but)\s+"
+    r"|\s+and\s+(?=(?:i|we|can|could|how|what|when|where|why|do|does|is|are|please|tell)\b)",
+    re.IGNORECASE,
+)
+
+
+def has_content(text):
+    return bool(re.search(r"[A-Za-z0-9]", text))
+
+
+def greeting_reply(greeting_text):
+    """Greet back in the same way the customer greeted."""
+    g = greeting_text.lower()
+    if "salam" in g or "alaikum" in g:
+        return "Wa alaikum assalam! 😊"
+    if "morning" in g:
+        return "Good morning! ☀️"
+    if "afternoon" in g:
+        return "Good afternoon! 🌤️"
+    if "evening" in g:
+        return "Good evening! 🌙"
+    if "good day" in g:
+        return "Good day! 😊"
+    return "Hello! 👋"
+
+
+def split_clauses(text):
+    """Split a long message into its separate questions or requests."""
+    parts = []
+    for piece in SPLIT_RE.split(text):
+        piece = re.sub(r"^\s*(?:and|also|but|so)\b[\s,]*", "", piece or "",
+                       flags=re.IGNORECASE).strip()
+        if len(re.findall(r"[A-Za-z0-9]+", piece)) >= 2:
+            parts.append(piece)
+    return parts or [text]
+
+
 def preprocess(text):
     """Lowercase -> remove punctuation -> tokenize -> remove stop words -> stem."""
     text = text.lower()
@@ -158,6 +202,51 @@ class FAQChatbot:
         i = same.index(question)
         count = min(n, len(same) - 1)
         return [same[(i + k) % len(same)] for k in range(1, count + 1)]
+
+    def intents(self, text, limit=3):
+        """The distinct FAQs a message asks about: [(question, score)] in the order asked."""
+        found = {}  # FAQ index -> (best score, position of first mention)
+        for pos, clause in enumerate(split_clauses(text)):
+            cleaned = preprocess(clause)
+            if not cleaned.strip():
+                continue
+            vec = self.vectorizer.transform([cleaned])
+            scores = cosine_similarity(vec, self.matrix)[0]
+            row = int(scores.argmax())
+            score = float(scores[row])
+            if score < THRESHOLD:
+                continue
+            idx = self.owner[row]
+            if idx not in found:
+                found[idx] = (score, pos)
+            elif score > found[idx][0]:
+                found[idx] = (score, found[idx][1])
+
+        if not found:
+            return []
+        top = max(s for s, _ in found.values())
+        kept = [(i, v) for i, v in found.items() if v[0] >= SECOND_INTENT_MIN or v[0] == top]
+        kept.sort(key=lambda kv: kv[1][0], reverse=True)   # strongest first
+        kept = kept[:limit]
+        kept.sort(key=lambda kv: kv[1][1])                 # then order of asking
+        return [(self.faqs[i]["question"], v[0]) for i, v in kept]
+
+    def analyze(self, message):
+        """Split a message into: greeting, the rest, and the questions inside it."""
+        greeting, rest = None, message
+        m = GREETING_RE.match(message)
+        if m:
+            greeting = greeting_reply(m.group(0))
+            rest = message[m.end():]
+        trimmed = THANKS_RE.sub("", rest, count=1)
+        if has_content(trimmed):
+            rest = trimmed
+        return {
+            "greeting": greeting,
+            "rest": rest,
+            "greeting_only": bool(greeting) and not has_content(rest),
+            "intents": self.intents(rest) if has_content(rest) else [],
+        }
 
     def topics(self):
         """{topic name: [questions]} in a sensible order."""

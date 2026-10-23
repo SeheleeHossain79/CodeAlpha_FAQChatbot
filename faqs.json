@@ -18,7 +18,7 @@
    "variants": ["how to send back an item", "steps to return an order", "return label", "I want to return my purchase", "I want to send back a shirt", "how do I return clothes"],
    "answer": "Go to 'My Orders', choose the item, click 'Return', and print the prepaid label. Drop the parcel at any post office."},
   {"question": "How long does a refund take?",
-   "variants": ["how do I get my money back", "when will I get my money back", "when will I be reimbursed", "refund time", "I want my money back", "how long until I am refunded", "when will my refund arrive"],
+   "variants": ["when will I get my money back", "when will I be reimbursed", "refund time", "how long until I am refunded", "when will my refund arrive"],
    "answer": "Refunds are processed within 5-7 business days after we receive your returned item."},
   {"question": "What payment methods do you accept?",
    "variants": ["how can I pay", "can I pay with PayPal", "do you accept credit cards", "cash on delivery", "payment options", "can I use Visa", "do you take Mastercard", "can I pay by debit card"],
@@ -156,5 +156,9 @@
    "answer": "Yes. For orders of 20 or more items, email support@littleaura.com with your list and we'll send a wholesale quote."},
   {"question": "How can I stay updated about new arrivals and sales?",
    "variants": ["subscribe to your newsletter", "get notified about new products", "follow you on social media", "upcoming sales announcement", "latest collection updates"],
-   "answer": "Subscribe to our newsletter at the bottom of the page and follow Little Aura on Facebook and Instagram to hear about new arrivals and sales first."}
+   "answer": "Subscribe to our newsletter at the bottom of the page and follow Little Aura on Facebook and Instagram to hear about new arrivals and sales first."},
+
+  {"question": "How do I get a refund?",
+   "variants": ["what is the refund process", "how can I get refund", "I want a refund", "I want to refund it", "how can I return it and get a refund", "how do I get my money back", "I want my money back", "refund request", "steps to get a refund", "how to claim a refund"],
+   "answer": "Go to 'My Orders', choose the item, and click 'Return', then print the prepaid label. Once we receive the item, your refund is processed within 5-7 business days. If the item arrived damaged, send a photo to support@littleaura.com within 7 days."}
 ]

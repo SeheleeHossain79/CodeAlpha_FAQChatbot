@@ -29,7 +29,7 @@ TESTS = [
     ("Do you provide wholesale pricing for bulk orders?", "Do you offer wholesale pricing for bulk orders?"),
     ("How can I share feedback or report a complaint?", "How can I give feedback or leave a review?"),
     ("How can I stay updated about new arrivals and upcoming sales?", "How can I stay updated about new arrivals and sales?"),
-    ("hello, how can I get refund?", "How long does a refund take?"),
+    ("hello, how can I get refund?",  "How do I get a refund?"),
     ("hi, where is my package", "How can I track my order?"),
     ("how do i track my order, thanks", "How can I track my order?"),
     ("hello", "Hello"),
